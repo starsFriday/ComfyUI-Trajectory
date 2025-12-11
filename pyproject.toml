@@ -29,7 +29,7 @@ Documentation = "https://github.com/starsFriday/ComfyUI-WanMove-Trajectory/wiki"
 
 [tool.comfy]
 PublisherId = "starsfriday"
-DisplayName = "Trajectory"
+DisplayName = "ComfyUI-WanMove-Trajectory"
 Icon = ""
 includes = [] 
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
