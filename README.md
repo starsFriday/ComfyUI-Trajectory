@@ -2,8 +2,7 @@
 
 > Recreate motion trails in a single picture on top of any single image and export every intermediate frame.
 
-https://github.com/user-attachments/assets/2d0c15eb-55f0-4b3b-860e-c301b2227187
-https://github.com/user-attachments/assets/2d0c15eb-55f0-4b3b-860e-c301b2227187
+https://github.com/user-attachments/assets/d738882e-668b-4f7f-a627-9952148d63b3
 
 <img width="1046" height="834" alt="Image" src="https://github.com/user-attachments/assets/04e2fa15-4775-4c6d-9aa7-5481c272c3c6" />
 <img width="932" height="1163" alt="Image" src="https://github.com/user-attachments/assets/4406aa93-d70a-441e-b134-02986c23c9bd" />
