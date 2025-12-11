@@ -22,10 +22,10 @@ license = {file = "LICENSE"}
 
 
 [project.urls]
-Repository = ""https://github.com/starsFriday/ComfyUI-Trajectory"
+Repository = "https://github.com/starsFriday/ComfyUI-Trajectory"
 #  Used by Comfy Registry https://registry.comfy.org
-Documentation = ""https://github.com/starsFriday/ComfyUI-Trajectory/wiki"
-"Bug Tracker" = ""https://github.com/starsFriday/ComfyUI-Trajectory/issues"
+Documentation = "https://github.com/starsFriday/ComfyUI-Trajectory/wiki"
+"Bug Tracker" = "https://github.com/starsFriday/ComfyUI-Trajectory/issues"
 
 [tool.comfy]
 PublisherId = "starsfriday"
