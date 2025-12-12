@@ -131,31 +131,29 @@ class TrajectoryDrawer:
         return normalized
 
     @staticmethod
-    def _sample_points(strokes: List[List[Point]], steps_per_segment: int) -> List[Point]:
-        sampled: List[Point] = []
+    def _sample_points(strokes: List[List[Point]], steps_per_segment: int) -> List[List[Point]]:
+        sampled: List[List[Point]] = []
         for stroke in strokes:
             norm = TrajectoryDrawer._normalize_points(stroke)
             if len(norm) < 2:
                 continue
+            resampled: List[Point] = []
             for idx in range(len(norm) - 1):
                 start = norm[idx]
                 end = norm[idx + 1]
-                sampled.append(start)
+                resampled.append(start)
                 for step in range(1, steps_per_segment + 1):
                     t = step / (steps_per_segment + 1)
                     interp = (start[0] * (1 - t) + end[0] * t, start[1] * (1 - t) + end[1] * t)
-                    sampled.append(interp)
-            sampled.append(norm[-1])
-        seen: List[Point] = []
-        for pt in sampled:
-            if not seen or seen[-1] != pt:
-                seen.append(pt)
-        return seen
+                    resampled.append(interp)
+            resampled.append(norm[-1])
+            sampled.append(resampled)
+        return sampled
 
     def _build_frames(
         self,
         base: Image.Image,
-        sampled_points: Sequence[Point],
+        sampled_strokes: Sequence[Sequence[Point]],
         color: Color,
         stroke_width: float,
         trail_decay: float,
@@ -163,79 +161,103 @@ class TrajectoryDrawer:
         fps: int,
         duration_seconds: float,
         show_pointer: bool,
-    ) -> Tuple[List[Image.Image], List[dict]]:
-        if len(sampled_points) < 2:
+    ) -> Tuple[List[Image.Image], List[List[dict]]]:
+        valid_strokes = [tuple(stroke) for stroke in sampled_strokes if len(stroke) >= 2]
+        if not valid_strokes:
             raise ValueError("Need at least two points to produce an animation.")
 
         w, h = base.size
         frames: List[Image.Image] = []
 
-        pixel_points = [
-            (point[0] * (w - 1), point[1] * (h - 1)) for point in sampled_points
+        pixel_strokes: List[List[Tuple[float, float]]] = [
+            [(point[0] * (w - 1), point[1] * (h - 1)) for point in stroke]
+            for stroke in valid_strokes
         ]
-        frame_count = max(1, len(pixel_points) - 1)
+
         if duration_seconds > 0.0:
             frame_count = max(1, int(round(max(duration_seconds, 0.01) * max(fps, 1))))
-        resampled_points = self._resample_points(pixel_points, frame_count + 1)
+        else:
+            frame_count = max(1, max(len(stroke) - 1 for stroke in pixel_strokes))
+        resample_length = frame_count + 1
+
+        resampled_strokes = [
+            self._resample_points(stroke, resample_length) for stroke in pixel_strokes
+        ]
 
         history_frames = max(
             2,
-            int(round(max(0.0, 1.0 - float(np.clip(trail_decay, 0.0, 1.0))) * max(fps, 1) * 2.0))
+            int(
+                round(max(0.0, 1.0 - float(np.clip(trail_decay, 0.0, 1.0))) * max(fps, 1) * 2.0)
+            )
             + 2,
         )
         track_records = [
-            {"x": int(round(pt[0])), "y": int(round(pt[1]))} for pt in resampled_points
+            [{"x": int(round(pt[0])), "y": int(round(pt[1]))} for pt in stroke_points]
+            for stroke_points in resampled_strokes
         ]
 
         circle_radius = max(2.0, stroke_width * 1.25)
         circle_alpha = int(np.clip(color[3], 0, 255))
-        pointer_direction = (1.0, 0.0)
+        pointer_directions = [(1.0, 0.0)] * len(resampled_strokes)
         pointer_scale = max(6.0, stroke_width * 1.75)
 
-        for idx in range(len(resampled_points)):
+        for idx in range(resample_length):
             frame = base.copy()
-            current = resampled_points[idx]
+            circle_overlay = None
+            line_overlay = None
+            pointer_overlay = None
+            pointer_draw = None
 
-            if circle_alpha > 0:
-                circle_overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-                draw_circle = ImageDraw.Draw(circle_overlay, "RGBA")
-                draw_circle.ellipse(
-                    (
-                        current[0] - circle_radius,
-                        current[1] - circle_radius,
-                        current[0] + circle_radius,
-                        current[1] + circle_radius,
-                    ),
-                    fill=color,
-                )
-                frame = Image.alpha_composite(frame, circle_overlay)
+            for stroke_idx, stroke_points in enumerate(resampled_strokes):
+                current = stroke_points[idx]
 
-            tail_coords = resampled_points[max(0, idx - history_frames) : idx + 1]
-            if len(tail_coords) > 1:
-                line_overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-                self._draw_gradient_polyline_on_overlay(
-                    line_overlay,
-                    int(max(1, round(stroke_width))),
-                    tail_coords,
-                    color[:3],
-                    line_style,
-                )
-                frame = Image.alpha_composite(frame, line_overlay)
+                if circle_alpha > 0:
+                    if circle_overlay is None:
+                        circle_overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+                    draw_circle = ImageDraw.Draw(circle_overlay, "RGBA")
+                    draw_circle.ellipse(
+                        (
+                            current[0] - circle_radius,
+                            current[1] - circle_radius,
+                            current[0] + circle_radius,
+                            current[1] + circle_radius,
+                        ),
+                        fill=color,
+                    )
 
-            if show_pointer:
-                pointer_overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+                tail_coords = stroke_points[max(0, idx - history_frames) : idx + 1]
                 if len(tail_coords) > 1:
-                    pointer_direction = self._normalized_direction(
+                    pointer_directions[stroke_idx] = self._normalized_direction(
                         tail_coords[-2],
                         tail_coords[-1],
-                        pointer_direction,
+                        pointer_directions[stroke_idx],
                     )
-                self._draw_pointer(
-                    ImageDraw.Draw(pointer_overlay, "RGBA"),
-                    current,
-                    pointer_direction,
-                    pointer_scale,
-                )
+                    if line_overlay is None:
+                        line_overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+                    self._draw_gradient_polyline_on_overlay(
+                        line_overlay,
+                        int(max(1, round(stroke_width))),
+                        tail_coords,
+                        color[:3],
+                        line_style,
+                    )
+
+                if show_pointer:
+                    if pointer_overlay is None:
+                        pointer_overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+                        pointer_draw = ImageDraw.Draw(pointer_overlay, "RGBA")
+                    self._draw_pointer(
+                        pointer_draw,
+                        current,
+                        pointer_directions[stroke_idx],
+                        pointer_scale,
+                    )
+
+            if circle_overlay is not None:
+                frame = Image.alpha_composite(frame, circle_overlay)
+            if line_overlay is not None:
+                frame = Image.alpha_composite(frame, line_overlay)
+            if pointer_overlay is not None:
                 frame = Image.alpha_composite(frame, pointer_overlay)
 
             frames.append(frame.convert("RGB"))
@@ -367,7 +389,7 @@ class TrajectoryDrawer:
         base = base.convert("RGBA")
 
         color = self._parse_color(line_color, tail_alpha)
-        frames, track_points = self._build_frames(
+        frames, track_records = self._build_frames(
             base,
             sampled,
             color,
@@ -379,7 +401,10 @@ class TrajectoryDrawer:
             show_pointer == "enable",
         )
         tensor_frames = self._pil_to_tensor(frames)
-        track_json = json.dumps(track_points, ensure_ascii=False)
+        track_json = json.dumps(track_records, ensure_ascii=False)
+        track_points_preview = [
+            point for stroke in track_records for point in stroke
+        ]
 
         meta = {
             "frame_count": tensor_frames.shape[0],
@@ -390,7 +415,8 @@ class TrajectoryDrawer:
             "line_style": line_style,
             "trail_decay": trail_decay,
             "show_pointer": show_pointer == "enable",
-            "track_points_preview": track_points[:64],
+            "track_points_preview": track_points_preview[:64],
+            "tracks": len(track_records),
             "reference_size": payload.reference_size,
             "has_reference_image": payload.reference_image is not None,
         }
